@@ -15,94 +15,32 @@ from random import shuffle
 import tensorflow._api.v2.compat.v1 as tf
 tf.disable_v2_behavior()
 
+from models.input import inputMaterial
+from constants.main import EPS, CROP_SIZE
+from utils.parser import parse_arguments
+
 #Under MIT License
 #Data was generated using Substance Designer and Substance Share library : https://share.allegorithmic.com. The data have its own license
 
 #Source code tested for tensorflow version 1.4.0
-class inputMaterial:
-    def __init__(self, name, lightPower, lightXPos, lightYPos, lightZPos, camXPos, camYPos, camZPos, uvscale, uoffset, voffset, rotation, identifier, path):
-        self.substanceName = name
-        self.lightPower = lightPower
-        self.lightXPos = lightXPos
-        self.lightYPos = lightYPos
-        self.lightZPos = lightZPos
-        self.camXPos = camXPos
-        self.camYPos = camYPos
-        self.camZPos = camZPos
-        self.uvscale = uvscale
-        self.uoffset = uoffset
-        self.voffset = voffset
-        self.rotation = rotation
-        self.identifier = identifier
-        self.path = path
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--input_dir", help="path to xml file, folder or image (defined by --imageFormat) containing information images")
-parser.add_argument("--mode", required=True, choices=["test", "train", "eval"])
-parser.add_argument("--output_dir", required=True, help="where to put output files")
-parser.add_argument("--seed", type=int)
-parser.add_argument("--checkpoint", default=None, help="directory with checkpoint to resume training from or use for testing")
-
-parser.add_argument("--max_steps", type=int, help="number of training steps (0 to disable)")
-parser.add_argument("--max_epochs", type=int, help="number of training epochs")
-parser.add_argument("--summary_freq", type=int, default=1000, help="update summaries every summary_freq steps")
-parser.add_argument("--progress_freq", type=int, default=1000, help="display progress every progress_freq steps")
-parser.add_argument("--display_freq", type=int, default=0, help="write current training images every display_freq steps")
-parser.add_argument("--save_freq", type=int, default=5000, help="save model every save_freq steps, 0 to disable")
-parser.add_argument("--test_freq", type=int, default=20000, help="test model every test_freq steps, 0 to disable")
-
-
-parser.add_argument("--testMode", type=str, default="auto", choices=["auto", "xml", "folder", "image"], help="Which loss to use instead of the L1 loss")
-parser.add_argument("--imageFormat", type=str, default="png", choices=["jpg", "png", "jpeg", "JPG", "JPEG", "PNG"], help="Which format have the input files")
-
 # to get tracing working on GPU, LD_LIBRARY_PATH may need to be modified:
 # LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/extras/CUPTI/lib64
 
-parser.add_argument("--aspect_ratio", type=float, default=1.0, help="aspect ratio of output images (width/height)")
-parser.add_argument("--batch_size", type=int, default=1, help="number of images in batch")
-parser.add_argument("--which_direction", type=str, default="AtoB", choices=["AtoB", "BtoA"])
-parser.add_argument("--ngf", type=int, default=64, help="number of generator filters in first conv layer")
-parser.add_argument("--ndf", type=int, default=64, help="number of discriminator filters in first conv layer")
-parser.add_argument("--scale_size", type=int, default=288, help="scale images to this size before cropping to 256x256")
-parser.add_argument("--flip", dest="flip", action="store_true", help="flip images horizontally")
-parser.add_argument("--no_flip", dest="flip", action="store_false", help="don't flip images horizontally")
-parser.set_defaults(flip=True)
-parser.add_argument("--nbTargets", type=int, default=4, help="Number of images to output")
-parser.add_argument("--depthFactor", type=int, default=1, help="Factor for the capacity of the network")
-parser.add_argument("--loss", type=str, default="l1", choices=["l1", "specuRough", "render", "flatMean", "l2", "renderL2"], help="Which loss to use instead of the L1 loss")
-parser.add_argument("--useLog", dest="useLog", action="store_true", help="Use the log for input")
-parser.set_defaults(useLog=False)
-parser.add_argument("--logOutputAlbedos", dest="logOutputAlbedos", action="store_true", help="Log the output albedos ? ?")
-parser.set_defaults(logOutputAlbedos=False)
-parser.add_argument("--l1_weight", type=float, default=100.0, help="weight on L1 term for generator gradient")
+args = parse_arguments()
 
-parser.add_argument("--nbDiffuseRendering", type=int, default=3, help="Number of diffuse renderings in the rendering loss")
-parser.add_argument("--nbSpecularRendering", type=int, default=6, help="Number of specular renderings in the rendering loss")
-parser.add_argument("--lr", type=float, default=0.00002, help="initial learning rate for adam")
-parser.add_argument("--beta1", type=float, default=0.5, help="momentum term of adam")
-parser.add_argument("--includeDiffuse", dest="includeDiffuse", action="store_true", help="Include the diffuse term in the specular renderings of the rendering loss ?")
-parser.set_defaults(includeDiffuse=True)
-parser.add_argument("--correctGamma", dest="correctGamma", action="store_true", help="correctGamma ? ?")
-parser.set_defaults(correctGamma=False)
-
-a = parser.parse_args()
-
-EPS = 1e-12
-CROP_SIZE = 256
-
-if a.testMode == "auto":
-    if a.input_dir.lower().endswith(".xml"):
-        a.testMode = "xml";
-    elif os.path.isdir(a.input_dir):
-        a.testMode = "folder";
+if args.testMode == "auto":
+    if args.input_dir.lower().endswith(".xml"):
+        args.testMode = "xml";
+    elif os.path.isdir(args.input_dir):
+        args.testMode = "folder";
     else:
-        a.testMode = "image";
+        args.testMode = "image";
 
 Examples = collections.namedtuple("Examples", "iterator, paths, inputs, targets, count, steps_per_epoch")
 Model = collections.namedtuple("Model", "outputs, gen_loss_L1, gen_grads_and_vars, train, rerendered, gen_loss_L1_exact")
 
-if a.depthFactor == 0:
-    a.depthFactor = a.nbTargets
+if args.depthFactor == 0:
+    args.depthFactor = args.nbTargets
 
 def preprocess(image):
     with tf.name_scope("preprocess"):
@@ -200,7 +138,7 @@ def createMaterialTable(examplesDict, shuffleImages):
         for variationKey, variationList in examplesDict[substanceName].items():
             materialsList.append(variationList)
             tmpPathList = []
-            if a.mode == "test":
+            if args.mode == "test":
                 for variation in variationList:
                     tmpPathList.append(variation.path)
             else:
@@ -229,7 +167,7 @@ def readInputFolder(input_dir, shuffleList):
     if input_dir is None or not os.path.exists(input_dir):
         raise Exception("input_dir does not exist")
         
-    pathList = glob.glob(os.path.join(input_dir, "*." + a.imageFormat))
+    pathList = glob.glob(os.path.join(input_dir, "*." + args.imageFormat))
     pathList = sorted(pathList);
     
     if shuffleList:
@@ -297,29 +235,29 @@ def _parse_function(filename):
         images=[]
         input = raw_input
         #add black images as targets (this is a hack and should be removed for a real test code pipeline).
-        if a.mode == "eval":
+        if args.mode == "eval":
             shape = tf.shape(input)
-            black = tf.zeros([shape[0], shape[1]  * a.nbTargets, shape[2]], dtype=tf.float32)
+            black = tf.zeros([shape[0], shape[1]  * args.nbTargets, shape[2]], dtype=tf.float32)
             input = tf.concat([input, black], axis=1)
         width = tf.shape(input)[1] # [height, width, channels]
-        imageWidth = width // (a.nbTargets + 1)
+        imageWidth = width // (args.nbTargets + 1)
 
-        for imageId in range(a.nbTargets + 1):
+        for imageId in range(args.nbTargets + 1):
             beginning = imageId * imageWidth
             end = (imageId+1) * imageWidth
             images.append(input[:,beginning:end,:])
 
-    if a.which_direction == "AtoB":
+    if args.which_direction == "AtoB":
         inputs, targets = [images[0], images[1:]]
-    elif a.which_direction == "BtoA":
+    elif args.which_direction == "BtoA":
         inputs, targets = [images[-1], images[:-1]]
     else:
         raise Exception("invalid direction")
         
-    if a.correctGamma:
+    if args.correctGamma:
         inputs = tf.pow(inputs, 2.2)
 
-    if a.useLog:
+    if args.useLog:
         inputs = logTensor(inputs)
     inputs = preprocess(inputs)
     targetsTmp = []
@@ -336,7 +274,7 @@ def _parse_function(filename):
 
         # area produces a nice downscaling, but does nearest neighbor for upscaling
         # assume we're going to be doing downscaling here
-        r = tf.image.resize_images(r, [a.scale_size, a.scale_size], method=tf.image.ResizeMethod.AREA)
+        r = tf.image.resize_images(r, [args.scale_size, args.scale_size], method=tf.image.ResizeMethod.AREA)
         return r
 
     with tf.name_scope("input_images"):
@@ -354,11 +292,11 @@ def load_examples(input_dir, shuffleValue):
     if input_dir is None or not os.path.exists(input_dir):
         raise Exception("input_dir does not exist")
     flatPathList = []
-    if a.testMode == "xml":
+    if args.testMode == "xml":
         flatPathList = readInputXML(input_dir, shuffleValue)
-    elif a.testMode == "folder":
+    elif args.testMode == "folder":
         flatPathList = readInputFolder(input_dir, shuffleValue)
-    elif a.testMode == "image":
+    elif args.testMode == "image":
         flatPathList = readInputImage(input_dir)
     
     if len(flatPathList) == 0:
@@ -368,34 +306,34 @@ def load_examples(input_dir, shuffleValue):
         dataset = tf.data.Dataset.from_tensor_slices(filenamesTensor)
         dataset = dataset.map(_parse_function, num_parallel_calls=1)
         dataset = dataset.repeat()
-        batched_dataset = dataset.batch(a.batch_size)
+        batched_dataset = dataset.batch(args.batch_size)
         #batched_dataset = batched_dataset.filter(lambda paths, blah, _: tf.equal(tf.shape(paths)[0], a.batch_size))
 
         iterator = batched_dataset.make_initializable_iterator()
         paths_batch, inputs_batch, targets_batch = iterator.get_next()
         
-        if a.scale_size > CROP_SIZE:
-            xyCropping = tf.random_uniform([2], 0, a.scale_size - CROP_SIZE, dtype=tf.int32)
+        if args.scale_size > CROP_SIZE:
+            xyCropping = tf.random_uniform([2], 0, args.scale_size - CROP_SIZE, dtype=tf.int32)
             inputs_batch = inputs_batch[:, xyCropping[0] : xyCropping[0] + CROP_SIZE, xyCropping[1] : xyCropping[1] + CROP_SIZE, :]
             targets_batch = targets_batch[:,:, xyCropping[0] : xyCropping[0] + CROP_SIZE, xyCropping[1] : xyCropping[1] + CROP_SIZE, :]
         #paths_batch.set_shape([a.batch_size])
         print("targets_batch_0 : " + str(targets_batch.get_shape()))        
         
         inputs_batch.set_shape([None, CROP_SIZE, CROP_SIZE, inputs_batch.get_shape()[-1] ])
-        targets_batch.set_shape([None, a.nbTargets, CROP_SIZE, CROP_SIZE, targets_batch.get_shape()[-1] ])
+        targets_batch.set_shape([None, args.nbTargets, CROP_SIZE, CROP_SIZE, targets_batch.get_shape()[-1] ])
 
         
     #paths_batch, inputs_batch, targets_batch = tf.train.batch([paths, input_images, target_images], batch_size=a.batch_size, num_threads=1)
     tf.summary.text("batch paths", paths_batch)
     
-    steps_per_epoch = int(math.floor(len(flatPathList) / a.batch_size))
+    steps_per_epoch = int(math.floor(len(flatPathList) / args.batch_size))
     print("steps per epoch : " + str(steps_per_epoch))
     #[batchsize, nbMaps, 256,256,3] Do the reshape by hand and probably concat it on third axis so we are sure of the reshape.
     print("inputs_batch : " + str(inputs_batch.get_shape()))    
     print("targets_batch : " + str(targets_batch.get_shape()))
     targets_batch_concat = targets_batch[:,0]
     print("targets_batch_concat : " + str(targets_batch_concat.get_shape()))
-    for imageId in range(1, a.nbTargets):
+    for imageId in range(1, args.nbTargets):
         targets_batch_concat = tf.concat([targets_batch_concat, targets_batch[:,imageId]], axis = -1)
     
     targets_batch = targets_batch_concat
@@ -448,21 +386,21 @@ def create_generator(generator_inputs, generator_outputs_channels):
     globalNetworkInput = inputMean
     globalNetworkOutputs = []
     with tf.variable_scope("globalNetwork_fc_1"):    
-        globalNetwork_fc_1 = fullyConnected(globalNetworkInput, a.ngf * 2, True, "globalNetworkLayer" + str(len(globalNetworkOutputs) + 1))
+        globalNetwork_fc_1 = fullyConnected(globalNetworkInput, args.ngf * 2, True, "globalNetworkLayer" + str(len(globalNetworkOutputs) + 1))
         globalNetworkOutputs.append(tf.nn.selu(globalNetwork_fc_1))
         
     #encoder_1: [batch, 256, 256, in_channels] => [batch, 128, 128, ngf]
     with tf.variable_scope("encoder_1"):
-        output = conv(generator_inputs, a.ngf * a.depthFactor , stride=2)
+        output = conv(generator_inputs, args.ngf * args.depthFactor , stride=2)
         layers.append(output)
     #Default ngf is 64
     layer_specs = [
-        a.ngf * 2 * a.depthFactor, # encoder_2: [batch, 128, 128, ngf] => [batch, 64, 64, ngf * 2]
-        a.ngf * 4 * a.depthFactor, # encoder_3: [batch, 64, 64, ngf * 2] => [batch, 32, 32, ngf * 4]
-        a.ngf * 8 * a.depthFactor, # encoder_4: [batch, 32, 32, ngf * 4] => [batch, 16, 16, ngf * 8]
-        a.ngf * 8 * a.depthFactor, # encoder_5: [batch, 16, 16, ngf * 8] => [batch, 8, 8, ngf * 8]
-        a.ngf * 8 * a.depthFactor, # encoder_6: [batch, 8, 8, ngf * 8] => [batch, 4, 4, ngf * 8]
-        a.ngf * 8 * a.depthFactor, # encoder_7: [batch, 4, 4, ngf * 8] => [batch, 2, 2, ngf * 8]
+        args.ngf * 2 * args.depthFactor, # encoder_2: [batch, 128, 128, ngf] => [batch, 64, 64, ngf * 2]
+        args.ngf * 4 * args.depthFactor, # encoder_3: [batch, 64, 64, ngf * 2] => [batch, 32, 32, ngf * 4]
+        args.ngf * 8 * args.depthFactor, # encoder_4: [batch, 32, 32, ngf * 4] => [batch, 16, 16, ngf * 8]
+        args.ngf * 8 * args.depthFactor, # encoder_5: [batch, 16, 16, ngf * 8] => [batch, 8, 8, ngf * 8]
+        args.ngf * 8 * args.depthFactor, # encoder_6: [batch, 8, 8, ngf * 8] => [batch, 4, 4, ngf * 8]
+        args.ngf * 8 * args.depthFactor, # encoder_7: [batch, 4, 4, ngf * 8] => [batch, 2, 2, ngf * 8]
         #a.ngf * 8 * a.depthFactor, # encoder_8: [batch, 2, 2, ngf * 8] => [batch, 1, 1, ngf * 8]
     ]
     
@@ -489,25 +427,25 @@ def create_generator(generator_inputs, generator_outputs_channels):
     with tf.variable_scope("encoder_8"):
         rectified = lrelu(layers[-1], 0.2)
          # [batch, in_height, in_width, in_channels] => [batch, in_height/2, in_width/2, out_channels]
-        convolved = conv(rectified, a.ngf * 8 * a.depthFactor, stride=2)
-        convolved = convolved  + GlobalToGenerator(globalNetworkOutputs[-1], a.ngf * 8 * a.depthFactor)
+        convolved = conv(rectified, args.ngf * 8 * args.depthFactor, stride=2)
+        convolved = convolved  + GlobalToGenerator(globalNetworkOutputs[-1], args.ngf * 8 * args.depthFactor)
         
         with tf.variable_scope("globalNetwork_fc_%d" % (len(globalNetworkOutputs) + 1)):  
             mean, variance = tf.nn.moments(convolved, axes=[1, 2], keep_dims=True)
             nextGlobalInput = tf.concat([tf.expand_dims(tf.expand_dims(globalNetworkOutputs[-1], axis = 1), axis=1), mean], axis = -1)
-            globalNetwork_fc = fullyConnected(nextGlobalInput, a.ngf * 8 * a.depthFactor, True, "globalNetworkLayer" + str(len(globalNetworkOutputs) + 1))
+            globalNetwork_fc = fullyConnected(nextGlobalInput, args.ngf * 8 * args.depthFactor, True, "globalNetworkLayer" + str(len(globalNetworkOutputs) + 1))
             globalNetworkOutputs.append(tf.nn.selu(globalNetwork_fc))  
                       
         layers.append(convolved)
     #default nfg = 64
     layer_specs = [
-        (a.ngf * 8 * a.depthFactor, 0.5),   # decoder_8: [batch, 1, 1, ngf * 8] => [batch, 2, 2, ngf * 8 * 2]
-        (a.ngf * 8 * a.depthFactor, 0.5),   # decoder_7: [batch, 2, 2, ngf * 8 * 2] => [batch, 4, 4, ngf * 8 * 2]
-        (a.ngf * 8 * a.depthFactor, 0.5),   # decoder_6: [batch, 4, 4, ngf * 8 * 2] => [batch, 8, 8, ngf * 8 * 2]
-        (a.ngf * 8 * a.depthFactor, 0.0),   # decoder_5: [batch, 8, 8, ngf * 8 * 2] => [batch, 16, 16, ngf * 8 * 2]
-        (a.ngf * 4 * a.depthFactor, 0.0),   # decoder_4: [batch, 16, 16, ngf * 8 * 2] => [batch, 32, 32, ngf * 4 * 2]
-        (a.ngf * 2 * a.depthFactor, 0.0),   # decoder_3: [batch, 32, 32, ngf * 4 * 2] => [batch, 64, 64, ngf * 2 * 2]
-        (a.ngf * a.depthFactor, 0.0),       # decoder_2: [batch, 64, 64, ngf * 2 * 2] => [batch, 128, 128, ngf * 2]
+        (args.ngf * 8 * args.depthFactor, 0.5),   # decoder_8: [batch, 1, 1, ngf * 8] => [batch, 2, 2, ngf * 8 * 2]
+        (args.ngf * 8 * args.depthFactor, 0.5),   # decoder_7: [batch, 2, 2, ngf * 8 * 2] => [batch, 4, 4, ngf * 8 * 2]
+        (args.ngf * 8 * args.depthFactor, 0.5),   # decoder_6: [batch, 4, 4, ngf * 8 * 2] => [batch, 8, 8, ngf * 8 * 2]
+        (args.ngf * 8 * args.depthFactor, 0.0),   # decoder_5: [batch, 8, 8, ngf * 8 * 2] => [batch, 16, 16, ngf * 8 * 2]
+        (args.ngf * 4 * args.depthFactor, 0.0),   # decoder_4: [batch, 16, 16, ngf * 8 * 2] => [batch, 32, 32, ngf * 4 * 2]
+        (args.ngf * 2 * args.depthFactor, 0.0),   # decoder_3: [batch, 32, 32, ngf * 4 * 2] => [batch, 64, 64, ngf * 2 * 2]
+        (args.ngf * args.depthFactor, 0.0),       # decoder_2: [batch, 64, 64, ngf * 2 * 2] => [batch, 128, 128, ngf * 2]
     ]
 
     num_encoder_layers = len(layers)
@@ -583,8 +521,8 @@ def tf_generateSpecularRendering(batchSize, surfaceArray, targets, outputs):
     wo = currentViewPos - surfaceArray
     wi = currentLightPos - surfaceArray
 
-    renderedSpecular = tf_Render(targets,wi,wo, includeDiffuse = a.includeDiffuse)           
-    renderedSpecularOutputs = tf_Render(outputs,wi,wo, includeDiffuse = a.includeDiffuse)#tf_Render_Optis(outputs,wi,wo, includeDiffuse = a.includeDiffuse)
+    renderedSpecular = tf_Render(targets,wi,wo, includeDiffuse = args.includeDiffuse)           
+    renderedSpecularOutputs = tf_Render(outputs,wi,wo, includeDiffuse = args.includeDiffuse)#tf_Render_Optis(outputs,wi,wo, includeDiffuse = a.includeDiffuse)
     return [renderedSpecular, renderedSpecularOutputs]
     
 def DX(x):
@@ -609,7 +547,7 @@ def loss_grad(x, y, alpha=0.2):
 def create_model(inputs, targets, reuse_bool = False):
     batchSize = tf.shape(inputs)[0]
     surfaceArray=[]
-    if a.loss == "render" or a.loss == "renderL2":
+    if args.loss == "render" or args.loss == "renderL2":
         XsurfaceArray = tf.expand_dims(tf.lin_space(-1.0, 1.0, CROP_SIZE), axis=-1)
         XsurfaceArray = tf.tile(XsurfaceArray,[1,CROP_SIZE])
         YsurfaceArray = -1 * tf.transpose(XsurfaceArray) #put -1 in the bottom of the table
@@ -647,32 +585,32 @@ def create_model(inputs, targets, reuse_bool = False):
         
         outputs = reconstructedOutputs
         
-        if a.loss == "l1":
+        if args.loss == "l1":
             epsilon = 0.001
-            NormalL1 = tf.abs(targets[0,:,:,0:3] - outputs[0,:,:,0:3]) * a.normalLossFactor
-            DiffuseL1 = tf.abs(tf.log(epsilon + deprocess(targets[0,:,:,3:6])) - tf.log(epsilon + deprocess(outputs[0,:,:,3:6]))) * a.diffuseLossFactor
-            RoughnessL1 = tf.abs(targets[0,:,:,6:9] - outputs[0,:,:,6:9]) * a.roughnessLossFactor
-            SpecularL1 = tf.abs(tf.log(epsilon + deprocess(targets[0,:,:,9:12])) - tf.log(epsilon + deprocess(outputs[0,:,:,9:12]))) * a.specularLossFactor
+            NormalL1 = tf.abs(targets[0,:,:,0:3] - outputs[0,:,:,0:3]) * args.normalLossFactor
+            DiffuseL1 = tf.abs(tf.log(epsilon + deprocess(targets[0,:,:,3:6])) - tf.log(epsilon + deprocess(outputs[0,:,:,3:6]))) * args.diffuseLossFactor
+            RoughnessL1 = tf.abs(targets[0,:,:,6:9] - outputs[0,:,:,6:9]) * args.roughnessLossFactor
+            SpecularL1 = tf.abs(tf.log(epsilon + deprocess(targets[0,:,:,9:12])) - tf.log(epsilon + deprocess(outputs[0,:,:,9:12]))) * args.specularLossFactor
             
             gen_loss_L1 = tf.reduce_mean(NormalL1 + DiffuseL1 + SpecularL1 + RoughnessL1)
-        elif a.loss == "l2":
+        elif args.loss == "l2":
             epsilon = 0.001
-            NormalL1 = tf.square(targets[0,:,:,0:3] - outputs[0,:,:,0:3]) * a.normalLossFactor
-            DiffuseL1 = tf.square(tf.log(epsilon + deprocess(targets[0,:,:,3:6])) - tf.log(epsilon + deprocess(outputs[0,:,:,3:6]))) * a.diffuseLossFactor
-            RoughnessL1 = tf.square(targets[0,:,:,6:9] - outputs[0,:,:,6:9]) * a.roughnessLossFactor
-            SpecularL1 = tf.square(tf.log(epsilon + deprocess(targets[0,:,:,9:12])) - tf.log(epsilon + deprocess(outputs[0,:,:,9:12]))) * a.specularLossFactor
+            NormalL1 = tf.square(targets[0,:,:,0:3] - outputs[0,:,:,0:3]) * args.normalLossFactor
+            DiffuseL1 = tf.square(tf.log(epsilon + deprocess(targets[0,:,:,3:6])) - tf.log(epsilon + deprocess(outputs[0,:,:,3:6]))) * args.diffuseLossFactor
+            RoughnessL1 = tf.square(targets[0,:,:,6:9] - outputs[0,:,:,6:9]) * args.roughnessLossFactor
+            SpecularL1 = tf.square(tf.log(epsilon + deprocess(targets[0,:,:,9:12])) - tf.log(epsilon + deprocess(outputs[0,:,:,9:12]))) * args.specularLossFactor
 
             gen_loss_L1 = tf.reduce_mean(NormalL1 + DiffuseL1 + SpecularL1 + RoughnessL1)        
-        elif a.loss == "render" or a.loss == "renderL2":
+        elif args.loss == "render" or args.loss == "renderL2":
             with tf.name_scope("renderer"):
                 with tf.name_scope("diffuse"):
-                    for nbDiffuseRender in range(a.nbDiffuseRendering):
+                    for nbDiffuseRender in range(args.nbDiffuseRendering):
                         diffuses = tf_generateDiffuseRendering(batchSize, targets, outputs)
                         renderedDiffuseImages.append(diffuses[0][0])
                         renderedDiffuseImagesOutputs.append(diffuses[1][0]) 
                                                 
                 with tf.name_scope ("specular"):
-                    for nbspecularRender in range(a.nbSpecularRendering):
+                    for nbspecularRender in range(args.nbSpecularRendering):
                         speculars = tf_generateSpecularRendering(batchSize, surfaceArray, targets, outputs)
                         renderedSpecularImages.append(speculars[0][0])
                         renderedSpecularImagesOutputs.append(speculars[1][0]) 
@@ -692,18 +630,18 @@ def create_model(inputs, targets, reuse_bool = False):
                     rerenderedOutputs = tf.concat([rerenderedOutputs, renderingOutSpecu], axis = -1)               
 
                 gen_loss_L1 = 0
-                if a.loss == "render":
+                if args.loss == "render":
                     gen_loss_L1 = tf.reduce_mean(tf.abs(tf.log(rerenderedTargets + 0.01) - tf.log(rerenderedOutputs + 0.01)))
-                if a.loss == "renderL2":
+                if args.loss == "renderL2":
                     gen_loss_L1 = tf.reduce_mean(tf.square(tf.log(rerenderedTargets + 0.01) - tf.log(rerenderedOutputs + 0.01)))
         consistencyLoss = 0
                     
-        gen_loss = gen_loss_L1 * a.l1_weight
+        gen_loss = gen_loss_L1 * args.l1_weight
 
     with tf.name_scope("generator_train"):
         with tf.variable_scope("generator_train0", reuse=reuse_bool):
             gen_tvars = [var for var in tf.trainable_variables() if var.name.startswith("generator")]
-            gen_optim = tf.train.AdamOptimizer(a.lr, a.beta1)
+            gen_optim = tf.train.AdamOptimizer(args.lr, args.beta1)
             gen_grads_and_vars = gen_optim.compute_gradients(gen_loss_L1, var_list=gen_tvars)
             gen_train = gen_optim.apply_gradients(gen_grads_and_vars)
 
@@ -722,10 +660,10 @@ def create_model(inputs, targets, reuse_bool = False):
     
 def save_loss_value(values):
     averaged = np.mean(values)
-    with open(os.path.join(a.output_dir, "losses.txt"), "a") as f:
+    with open(os.path.join(args.output_dir, "losses.txt"), "a") as f:
             f.write(str(averaged) + "\n")
                     
-def save_images(fetches, output_dir = a.output_dir, step=None):
+def save_images(fetches, output_dir = args.output_dir, step=None):
     image_dir = os.path.join(output_dir, "images")
     if not os.path.exists(image_dir):
         os.makedirs(image_dir)
@@ -746,14 +684,14 @@ def save_images(fetches, output_dir = a.output_dir, step=None):
             f.write(contents)
         #fetch outputs and targets
         for kind in ["outputs", "targets"]:
-            for idImage in range(a.nbTargets):
+            for idImage in range(args.nbTargets):
                 filename = name + "-" + kind + "-" + str(idImage) + "-.png"
                 if step is not None:
                     filename = "%08d-%s" % (step, filename)
                 filetsetKey = kind + str(idImage)
                 fileset[filetsetKey] = filename
                 out_path = os.path.join(image_dir, filename)
-                contents = fetches[kind][i * a.nbTargets + idImage]
+                contents = fetches[kind][i * args.nbTargets + idImage]
                 with open(out_path, "wb") as f:
                     f.write(contents)
         filesets.append(fileset)
@@ -761,7 +699,7 @@ def save_images(fetches, output_dir = a.output_dir, step=None):
     return filesets
 
 
-def append_index(filesets, output_dir = a.output_dir, step=False):
+def append_index(filesets, output_dir = args.output_dir, step=False):
     index_path = os.path.join(output_dir, "index.html")
     if os.path.exists(index_path):
         index = open(index_path, "a")
@@ -772,7 +710,7 @@ def append_index(filesets, output_dir = a.output_dir, step=False):
         if step:
             index.write("<th>step</th>")
         index.write("<th>name</th><th>log(input)</th>")
-        for idImage in range(a.nbTargets):
+        for idImage in range(args.nbTargets):
             index.write("<th>" + str(mapnames[idImage]) + "</th>")
         index.write("</tr>")            
 
@@ -782,13 +720,13 @@ def append_index(filesets, output_dir = a.output_dir, step=False):
         if step:
             index.write("<td>%d</td>" % fileset["step"])
         index.write("<td>%s targets</td>" % fileset["name"])
-        if a.mode != "eval" : 
+        if args.mode != "eval" : 
 
             for kind in ["inputs", "targets"]:
                 if kind == "inputs":
                     index.write("<td><img src='images/%s'></td>" % fileset[kind])
                 elif kind == "targets":
-                    for idImage in range(a.nbTargets):
+                    for idImage in range(args.nbTargets):
                         filetsetKey = kind + str(idImage)
                         index.write("<td><img src='images/%s'></td>" % fileset[filetsetKey])
             index.write("</tr>")
@@ -801,7 +739,7 @@ def append_index(filesets, output_dir = a.output_dir, step=False):
             if kind == "inputs":
                 index.write("<td><img src='images/%s'></td>" % fileset[kind])
             elif kind=="outputs":
-                for idImage in range(a.nbTargets):
+                for idImage in range(args.nbTargets):
                     filetsetKey = kind + str(idImage)
                     index.write("<td><img src='images/%s'></td>" % fileset[filetsetKey])
         index.write("</tr>")
@@ -814,7 +752,7 @@ def runTestFromTrain(currentStep, evalExamples, max_steps, display_fetches_test,
     for step in range(max_steps):
         try:
             results_test = sess.run(display_fetches_test)
-            test_output_dir = a.output_dir + "/testStep"+str(currentStep)
+            test_output_dir = args.output_dir + "/testStep"+str(currentStep)
             filesets = save_images(results_test, test_output_dir)
             index_path = append_index(filesets, test_output_dir)
         except tf.errors.OutOfRangeError:
@@ -837,50 +775,50 @@ def reshape_tensor_display(tensor, splitAmount, logAlbedo = False):
     
 def main():
 
-    if a.seed is None:
-        a.seed = random.randint(0, 2**31 - 1)
+    if args.seed is None:
+        args.seed = random.randint(0, 2**31 - 1)
 
-    tf.set_random_seed(a.seed)
-    np.random.seed(a.seed)
-    random.seed(a.seed)
+    tf.set_random_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
 
-    if not os.path.exists(a.output_dir):
-        os.makedirs(a.output_dir)
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
 
-    if a.mode == "test" or a.mode == "export" or a.mode == "eval" :
-        if a.checkpoint is None:
+    if args.mode == "test" or args.mode == "export" or args.mode == "eval" :
+        if args.checkpoint is None:
             raise Exception("checkpoint required for test, export or eval mode")
 
         # load some options from the checkpoint
         options = {"which_direction", "ngf", "ndf", "nbTargets", "depthFactor", "loss", "useLog"}
-        with open(os.path.join(a.checkpoint, "options.json")) as f:
+        with open(os.path.join(args.checkpoint, "options.json")) as f:
             for key, val in json.loads(f.read()).items():
                 if key in options:
                     print("loaded", key, "=", val)
-                    setattr(a, key, val)
+                    setattr(args, key, val)
         # disable these features in test mode
-        a.scale_size = CROP_SIZE
-        a.flip = False
+        args.scale_size = CROP_SIZE
+        args.flip = False
 
-    for k, v in a._get_kwargs():
+    for k, v in args._get_kwargs():
         print(k, "=", v)
 
-    with open(os.path.join(a.output_dir, "options.json"), "w") as f:
-        f.write(json.dumps(vars(a), sort_keys=True, indent=4))
+    with open(os.path.join(args.output_dir, "options.json"), "w") as f:
+        f.write(json.dumps(vars(args), sort_keys=True, indent=4))
 
-    examples = load_examples(a.input_dir, a.mode == "train")
-    print(a.mode + " set count = %d" % examples.count)
-    if a.mode == "train":
-        evalExamples = load_examples(a.input_dir.rsplit('\\',1)[0] + "\\testBlended", False)
+    examples = load_examples(args.input_dir, args.mode == "train")
+    print(args.mode + " set count = %d" % examples.count)
+    if args.mode == "train":
+        evalExamples = load_examples(args.input_dir.rsplit('\\',1)[0] + "\\testBlended", False)
         print("evaluation set count = %d" % evalExamples.count)
 
     # inputs and targets are [batch_size, height, width, channels]
     model = create_model(examples.inputs, examples.targets, False)
-    if a.mode == "train":
+    if args.mode == "train":
         model_test = create_model(evalExamples.inputs, evalExamples.targets, True)
 
     tmpTargets = examples.targets
-    if a.mode == "train":
+    if args.mode == "train":
         tmpTargetsTest = evalExamples.targets
 
     # undo colorization splitting on images that we use for display/output    
@@ -889,15 +827,15 @@ def main():
     outputs = deprocess(model.outputs)
     
             
-    if a.mode == "train":
+    if args.mode == "train":
         inputsTests = deprocess(evalExamples.inputs)
         targetsTests = deprocess(tmpTargetsTest)
         outputsTests = deprocess(model_test.outputs)
 
     def convert(image, squeeze=False):
-        if a.aspect_ratio != 1.0:
+        if args.aspect_ratio != 1.0:
             # upscale to correct aspect ratio
-            size = [CROP_SIZE, int(round(CROP_SIZE * a.aspect_ratio))]
+            size = [CROP_SIZE, int(round(CROP_SIZE * args.aspect_ratio))]
             image = tf.image.resize_images(image, size=size, method=tf.image.ResizeMethod.BICUBIC)
 
         if squeeze:
@@ -911,28 +849,28 @@ def main():
         return tf.image.convert_image_dtype(image, dtype=tf.uint8, saturate=True)
 
     with tf.name_scope("transform_images"):
-        targets_reshaped = reshape_tensor_display(targets, a.nbTargets, logAlbedo = a.logOutputAlbedos)
-        outputs_reshaped = reshape_tensor_display(outputs, a.nbTargets, logAlbedo = a.logOutputAlbedos)
+        targets_reshaped = reshape_tensor_display(targets, args.nbTargets, logAlbedo = args.logOutputAlbedos)
+        outputs_reshaped = reshape_tensor_display(outputs, args.nbTargets, logAlbedo = args.logOutputAlbedos)
         inputs_reshaped = reshape_tensor_display(inputs, 1, logAlbedo = False)
 
-        if a.mode == "train":
+        if args.mode == "train":
             inputs_reshaped_test = reshape_tensor_display(inputsTests, 1, logAlbedo = False)
-            targets_test_reshaped = reshape_tensor_display(targetsTests, a.nbTargets, logAlbedo = a.logOutputAlbedos)
-            outputs_test_reshaped = reshape_tensor_display(outputsTests, a.nbTargets, logAlbedo = a.logOutputAlbedos)
+            targets_test_reshaped = reshape_tensor_display(targetsTests, args.nbTargets, logAlbedo = args.logOutputAlbedos)
+            outputs_test_reshaped = reshape_tensor_display(outputsTests, args.nbTargets, logAlbedo = args.logOutputAlbedos)
 
 
     # reverse any processing on images so they can be written to disk or displayed to user
     with tf.name_scope("convert_inputs"):
         converted_inputs = convert(inputs_reshaped)
-        if a.mode == "train":
+        if args.mode == "train":
             converted_inputs_test = convert(inputs_reshaped_test)
     with tf.name_scope("convert_targets"):
         converted_targets = convert(targets_reshaped)
-        if a.mode == "train":
+        if args.mode == "train":
             converted_targets_test = convert(targets_test_reshaped)
     with tf.name_scope("convert_outputs"):
         converted_outputs = convert(outputs_reshaped)
-        if a.mode == "train":
+        if args.mode == "train":
             converted_outputs_test = convert(outputs_test_reshaped)
     with tf.name_scope("encode_images"):
         display_fetches = {
@@ -941,7 +879,7 @@ def main():
             "targets": tf.map_fn(tf.image.encode_png, converted_targets, dtype=tf.string, name="target_pngs"),
             "outputs": tf.map_fn(tf.image.encode_png, converted_outputs, dtype=tf.string, name="output_pngs"),
         }
-        if a.mode == "train":
+        if args.mode == "train":
             display_fetches_test = {
                 "paths": evalExamples.paths,
                 "inputs": tf.map_fn(tf.image.encode_png, converted_inputs_test, dtype=tf.string, name="input_pngs"),
@@ -950,7 +888,7 @@ def main():
             }        
             
     with tf.name_scope("outputs_summary"):
-        tf.summary.image("outputs", converted_outputs, max_outputs=a.nbTargets)
+        tf.summary.image("outputs", converted_outputs, max_outputs=args.nbTargets)
 
     tf.summary.scalar("generator_loss", model.gen_loss_L1)
 
@@ -960,13 +898,13 @@ def main():
 
     saver = tf.train.Saver(max_to_keep=1)
 
-    logdir = a.output_dir if ( a.summary_freq > 0) else None
+    logdir = args.output_dir if ( args.summary_freq > 0) else None
     sv = tf.train.Supervisor(logdir=logdir, save_summaries_secs=0, saver=None)
     with sv.managed_session() as sess:
         print("parameter_count =", sess.run(parameter_count))
-        if a.checkpoint is not None:
-            print("loading model from checkpoint : " + a.checkpoint)
-            checkpoint = tf.train.latest_checkpoint(a.checkpoint)
+        if args.checkpoint is not None:
+            print("loading model from checkpoint : " + args.checkpoint)
+            checkpoint = tf.train.latest_checkpoint(args.checkpoint)
             saver.restore(sess, checkpoint)
 
         max_steps = 2**32
@@ -974,10 +912,10 @@ def main():
         sess.run(examples.iterator.initializer)
         print("BBBBBBBBbb")
 
-        if a.mode == "test" or a.mode == "eval":
+        if args.mode == "test" or args.mode == "eval":
             print("AAAAAAAAAAAAAAA")
 
-            if a.checkpoint is None:
+            if args.checkpoint is None:
                 print("checkpoint is required for testing")
                 return
             # testing
@@ -1017,13 +955,13 @@ def main():
                         "global_step": sv.global_step,
                     }
 
-                    if should(a.progress_freq) or step == 0 or step == 1:
+                    if should(args.progress_freq) or step == 0 or step == 1:
                         fetches["gen_loss_L1"] = model.gen_loss_L1
 
-                    if should(a.summary_freq):
+                    if should(args.summary_freq):
                         fetches["summary"] = sv.summary_op
 
-                    if should(a.display_freq):
+                    if should(args.display_freq):
                         fetches["display"] = display_fetches
                         
                     try:    
@@ -1034,31 +972,31 @@ def main():
                         
                     global_step = results["global_step"]
 
-                    if should(a.summary_freq):
+                    if should(args.summary_freq):
                         sv.summary_writer.add_summary(results["summary"], global_step)
 
-                    if should(a.display_freq):
+                    if should(args.display_freq):
                         print("saving display images")
                         filesets = save_images(results["display"], step=global_step)
                         append_index(filesets, step=True)
 
-                    if should(a.progress_freq):
+                    if should(args.progress_freq):
                         # global_step will have the correct step count if we resume from a checkpoint
                         train_epoch = math.ceil(global_step / examples.steps_per_epoch)
                         train_step = global_step - (train_epoch - 1) * examples.steps_per_epoch
-                        print("progress  epoch %d  step %d  image/sec %0.1f" % (train_epoch, train_step, global_step * a.batch_size / (time.time() - start_time)))
+                        print("progress  epoch %d  step %d  image/sec %0.1f" % (train_epoch, train_step, global_step * args.batch_size / (time.time() - start_time)))
                         print("gen_loss_L1", results["gen_loss_L1"])
 
-                    if should(a.save_freq):
+                    if should(args.save_freq):
                         print("saving model")
-                        saver.save(sess, os.path.join(a.output_dir, "model"), global_step=sv.global_step)
-                    if should(a.test_freq) or global_step == 1:
+                        saver.save(sess, os.path.join(args.output_dir, "model"), global_step=sv.global_step)
+                    if should(args.test_freq) or global_step == 1:
                         runTestFromTrain(global_step, evalExamples, max_steps, display_fetches_test, sess)
                         
                     if sv.should_stop():
                         break
             finally:
-                saver.save(sess, os.path.join(a.output_dir, "model"), global_step=sv.global_step)
+                saver.save(sess, os.path.join(args.output_dir, "model"), global_step=sv.global_step)
                 sess.run(evalExamples.iterator.initializer)
                 runTestFromTrain("final", evalExamples, max_steps, display_fetches_test, sess)
                 
@@ -1148,8 +1086,11 @@ def tf_Render(svbrdf, wi, wo, includeDiffuse = True):
     result = result * lampFactor
 
     result = result * tf.maximum(0.0, NdotL) / tf.expand_dims(tf.maximum(wiNorm[:,:,:,2], 0.001), axis=-1) # This division is to compensate for the cosinus distribution of the intensity in the rendering
-      
+
     return [result, D_rendered, G_rendered, F_rendered, diffuse_rendered, diffuse]
     
+
+def main1():
+    print(tf.config.list_physical_devices('GPU'))
     
 main()

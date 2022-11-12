@@ -1,0 +1,2 @@
+EPS = 1e-12
+CROP_SIZE = 256
