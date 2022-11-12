@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import os
-import tensorflow as tf
 import numpy as np
 import argparse
 import json
@@ -13,13 +12,8 @@ import math
 import time
 from lxml import etree
 from random import shuffle
-
-#!!!If running TF v > 2.0 uncomment those lines (also remove the tensorflow import on line 5):!!!
-#import tensorflow.compat.v1 as tf
-#tf.disable_v2_behavior()
-
-
-#Implementation originall based on https://github.com/affinelayer/pix2pix-tensorflow and heavily modified.
+import tensorflow._api.v2.compat.v1 as tf
+tf.disable_v2_behavior()
 
 #Under MIT License
 #Data was generated using Substance Designer and Substance Share library : https://share.allegorithmic.com. The data have its own license
@@ -118,7 +112,6 @@ def preprocess(image):
 
 def deprocess(image):
     with tf.name_scope("deprocess"):
-        # [-1, 1] => [0, 1]
         return (image + 1) / 2
 
 
@@ -602,6 +595,7 @@ def DY(x):
 
 def loss_l1(x, y):
     return tf.reduce_mean(tf.abs(x-y))
+
 def loss_l2(x, y):
     return tf.reduce_mean(tf.square(x-y))
 
@@ -763,6 +757,7 @@ def save_images(fetches, output_dir = a.output_dir, step=None):
                 with open(out_path, "wb") as f:
                     f.write(contents)
         filesets.append(fileset)
+
     return filesets
 
 
@@ -876,7 +871,7 @@ def main():
     examples = load_examples(a.input_dir, a.mode == "train")
     print(a.mode + " set count = %d" % examples.count)
     if a.mode == "train":
-        evalExamples = load_examples(a.input_dir.rsplit('/',1)[0] + "/testBlended", False)
+        evalExamples = load_examples(a.input_dir.rsplit('\\',1)[0] + "\\testBlended", False)
         print("evaluation set count = %d" % evalExamples.count)
 
     # inputs and targets are [batch_size, height, width, channels]
@@ -912,10 +907,7 @@ def main():
                 imageValue = imageValue / tf.reduce_max(imageValue)
                 return imageValue
             image = [tempLog(imageVal) for imageVal in image]
-        #imageUint = tf.clip_by_value(image, 0.0, 1.0)
-        #imageUint = imageUint * 65535.0
-        #imageUint16 = tf.cast(imageUint, tf.uint16)
-        #return imageUint16
+
         return tf.image.convert_image_dtype(image, dtype=tf.uint8, saturate=True)
 
     with tf.name_scope("transform_images"):
@@ -1033,6 +1025,7 @@ def main():
 
                     if should(a.display_freq):
                         fetches["display"] = display_fetches
+                        
                     try:    
                         results = sess.run(fetches, options=options, run_metadata=run_metadata)
                     except tf.errors.OutOfRangeError :
@@ -1155,7 +1148,7 @@ def tf_Render(svbrdf, wi, wo, includeDiffuse = True):
     result = result * lampFactor
 
     result = result * tf.maximum(0.0, NdotL) / tf.expand_dims(tf.maximum(wiNorm[:,:,:,2], 0.001), axis=-1) # This division is to compensate for the cosinus distribution of the intensity in the rendering
-            
+      
     return [result, D_rendered, G_rendered, F_rendered, diffuse_rendered, diffuse]
     
     
